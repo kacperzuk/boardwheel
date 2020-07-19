@@ -6,15 +6,16 @@ use <BOSL/transforms.scad>
 use <BOSL/shapes.scad>
 use <BOSL/joiners.scad>
 use <BOSL/metric_screws.scad>
+use <threads.scad>
 
 $fn = $preview ? 20 : 100;
 
 max_overhang = 60;
 
-outer_diameter = 136; // srednica tego, co wchodzilo w rowki
+outer_diameter = 138; // srednica tego, co wchodzilo w rowki
 outer_width = 5.3; // szerokosc tego, co wchodzilo w rowki
 inner_width = 35.7;
-inner_diameter = outer_diameter - 5*2; // srednica najwiekszej powierzchni styku z silnikiem
+inner_diameter = 128.5; // srednica najwiekszej powierzchni styku z silnikiem
 
 shaft_bump_inner_diameter = 47;
 shaft_bump_outer_diameter = 34;
@@ -41,13 +42,14 @@ total_motor_len = outer_bump_len + 2* outer_width + inner_width;
 
 echo(total_motor_len);
 
-//top_rim_w = 27;
-//top_rim_h = top_rim_w/tan(max_overhang);
-top_rim_h = 19;
-top_rim_w = top_rim_h*tan(max_overhang);
 
 ring_diameter = inches(6.5)+5;
-ring_fillet_deepness = 10;
+ring_fillet_deepness = 5;
+
+holder_od = 145;
+holder_h = inches(5.5) - 2*ring_fillet_deepness;
+holder_fillet = 5;
+top_ring_h = 10;
 
 module screws() {
     up(outer_bump_len + outer_width + inner_width + outer_width)
@@ -59,6 +61,19 @@ module screws_long() {
     up(outer_bump_len + outer_width + inner_width + outer_width - screw_hole_len - screw_hole_head_len)
     zring(r=screw_hole_ring_diameter/2, n=screw_hole_count)
     metric_bolt(pitch=0, size=screw_hole_diameter, l=40, headtype="countersunk", align=V_UP); 
+}
+
+module plastic_screws_threads() {
+    up(holder_h/2 + top_ring_h)
+    zrot(360/screw_hole_count/4)
+    zring(r=(outer_diameter + holder_od)/2/2, n=screw_hole_count)
+    {
+        if($preview) {
+          screw(screwsize=3,screwlen=35,headsize=6,headlen=3,countersunk=false);
+        } else {
+          metric_thread (3, 0.5, 35, internal=true, $fn=10);
+        }
+    }
 }
 
 
@@ -103,33 +118,20 @@ difference() {
 
 function inches(x) = x*25.4;
 
-module holder_top_rim() {
-    difference() {
-    up(5+total_motor_len) {
-        tube(h=top_rim_h, id1 = outer_diameter, od1=inches(6), id2=outer_diameter-top_rim_w, od2 = inches(6), align=V_UP);
-    }
-    up(5) screws_long();
-}
-
-}
-
 module outer_diameter_cutout() {
     cyl(d=outer_diameter, h=outer_width, align=V_BOTTOM);
     cyl(d1=outer_diameter, d2=inner_diameter, h=(outer_diameter-inner_diameter)/tan(max_overhang), align=V_UP);
 }
 
 module holder() {
-    holder_top_rim();
-    xrot(180) holder_top_rim();
     difference() {
       group() {
-        tube(h = inches(6), id=inner_diameter, od=inches(6), align=V_CENTER);
-        up(inches(3))
-        cyl(d=inches(6), h=outer_diameter-inner_diameter, align=V_BOTTOM);
-
+        cyl(h=holder_h, d=holder_od, align=V_CENTER, fillet=holder_fillet);
       };
-      up(5+outer_bump_len+outer_width+inner_width) {
-          cyl(h=20, d=outer_diameter, align=V_UP);
+      cyl(h = holder_h, d=inner_diameter, align=V_CENTER);
+
+      up(5+outer_bump_len+outer_width+inner_width+outer_width) {
+          outer_diameter_cutout();
       }
       
       up(5+outer_bump_len+outer_width) {
@@ -143,26 +145,28 @@ module holder() {
 
           }
       }
-      
-      xrot(180) up(5) screws_long();
     }
 }
 
 module top_ring() {
-    start = 5 + outer_bump_len + outer_width*2 + inner_width;
     difference() {
-      up(start) {
-        tube(h=inches(3)-start, id=inches(3), od=inner_diameter + (inches(6) - inner_diameter)/2, align=V_UP);
-        up(inches(3)-start)
-          difference() {
-              tube(h=17, id=inches(3), od=ring_diameter, align=V_UP);
-              torus(r2=ring_fillet_deepness, d=inches(6)+ring_fillet_deepness*2);
-          }
-      }
-      up(5)
-        screws_long();
-      up(start)
-      tube(h=top_rim_h, od = inches(6), id = outer_diameter - top_rim_w);
+     up(holder_h/2) {
+     difference() {
+         tube(h=top_ring_h, id=inches(3), od=ring_diameter, align=V_UP);
+         torus(r2=ring_fillet_deepness, d=holder_od+ring_fillet_deepness*2);
+         tube(h=ring_fillet_deepness, id=holder_od+ring_fillet_deepness*2, od=ring_diameter);
+     };
+     down(holder_fillet) {
+         difference() {
+         cyl(h=holder_fillet, d=holder_od, align=V_UP);
+         up(holder_fillet)
+         cyl(h=holder_fillet*3, d=holder_od, fillet=holder_fillet, align=V_DOWN);
+         }
+     }
+ }
+     up(5)
+       screws_long();
+     plastic_screws_threads();
     }
     
 }
@@ -185,42 +189,58 @@ module filler() {
 }
 
 module valve_cutout() {
-    valve_cutout_deepness = 0.45*(inches(6) - outer_diameter);
+    valve_cutout_deepness = 0.60*(holder_od - outer_diameter);
     echo(valve_cutout_deepness=valve_cutout_deepness);
     zrot(360/screw_hole_count/2)
-    right(inches(3))
-    yscale(2)
-
     {
-      up(10)
-      cyl(h=inches(3)+10, fillet2=7, r = valve_cutout_deepness, align=V_DOWN);
-    
-      down(inches(3))
-      yrot(max_overhang)
-      cyl(h=inches(6), r=valve_cutout_deepness);
-    }
+      right(holder_od/2) {
+        up(10)
+        yscale(2)
+          cyl(h=holder_h, fillet2=1, r = valve_cutout_deepness, align=V_DOWN);
+      }
+
+      
+      down(holder_h/2+2*top_ring_h-5) {
+        zrot(-5) {
+          difference() {
+            pie_slice(ang=40, h=top_ring_h, r=(holder_od/2 + valve_cutout_deepness));
+            pie_slice(ang=40, h=top_ring_h, r=(holder_od/2 - valve_cutout_deepness));
+          }
+          up(valve_cutout_deepness*2) {
+          zrot(15) right(holder_od/2) tube(od=valve_cutout_deepness*3.5, id=valve_cutout_deepness*3.5-2, orient=ORIENT_Y, $fn=20 );
+          zrot(25) right(holder_od/2) tube(od=valve_cutout_deepness*3.5, id=valve_cutout_deepness*3.5-2, orient=ORIENT_Y, $fn=20 );
+          zrot(35) right(holder_od/2) tube(od=valve_cutout_deepness*3.5, id=valve_cutout_deepness*3.5-2, orient=ORIENT_Y, $fn=20);
+          }
+        }
+      }
+
+     }
         
 }
 
 //xdistribute(200) {
     
 // ta grupa to przyklad
-/*
+module viz() {
 group() {
 difference() {
 group() {
+difference() {
 holder();
+    valve_cutout();
+}
 up(25)
     screws_long();
-up(20)
     top_ring();
+    bottom_ring();
 }
-cuboid([200,200,300], align=V_RIGHT+V_CENTER);
+cuboid([200,200,300], align=V_LEFT+V_CENTER);
 }
 up(5) base_no_screws();
 xrot(180) up(5) base_no_screws();
 }
-*/
+}
+
 
     //up(5) base_no_screws();
 
@@ -243,15 +263,74 @@ xrot(180) up(5) base_no_screws();
 //valve_cutout();
 //}
 
-bottom_ring();
+//bottom_ring();
 //bottom_ring();
 
-/*
+module holder_print() {
 intersection() {
     difference() {
       holder();
       valve_cutout();
+      plastic_screws_threads();
+      xrot(180) plastic_screws_threads();
+
     }
     cuboid([200,200,300], align=V_RIGHT);
 }
+
+left(5)
+intersection() {
+    difference() {
+      holder();
+      valve_cutout();
+              plastic_screws_threads();
+      xrot(180) plastic_screws_threads();
+
+    }
+    cuboid([200,200,300], align=V_LEFT);
+}
+}
+
+
+module tire() {
+    color("grey") {
+    difference() {
+        cyl(h=inches(6), d=inches(10.5), fillet=inches(1));
+        cyl(h=inches(7), d=holder_od+25*2);
+    }
+    
+    difference() {
+        cyl(h=inches(5.5), d=holder_od+25*2);
+        cyl(h=inches(7), d=holder_od); 
+    }   
+}
+
+}
+
+
+//holder_print();
+//top_ring();
+//bottom_ring();
+/*
+start = 5 + outer_bump_len + outer_width*2 + inner_width;
+xrot(180)
+    difference() {
+      up(holder_h/2)
+        tube(h=20, id1=inches(3), od1=holder_od, id2=inches(3), od2=holder_od - inches(5.5), align=V_UP);
+      up(7)
+        screws_long();
+    }
+   
+
 */
+    
+module sample() {
+    xdistribute(inches(7)) {
+        holder_print();
+        xrot(180)
+          top_ring();
+        bottom_ring();
+    }
+}
+
+sample();
